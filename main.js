@@ -26,7 +26,7 @@ var Reviewer = function(userId) {
     this.userId = userId;
     this.approved = false;
     //console.log('Task instantiated with id: ' + id);
-}
+};
 
 function disableMergeButton() {
     $(GH_MERGE_BUTTON).prop('disabled', true);
@@ -36,10 +36,10 @@ function enableMergeButton() {
     $(GH_MERGE_BUTTON).prop('disabled', false);
 }
 
-function createPRApprovalStatus(reviewers, approvers) {
-    var $reviewerListJQuery = updateApproverList(reviewers, approvers);
+function createPRApprovalStatus() {
+    var $reviewerListJQuery = getApproverList();
     var $rhApprovalSpan = $('<h4>Pull request approver status:</h4>');
-    var $rhApproverList = $('<ul/>')
+    var $rhApproverList = $('<ul style="list-style-type:none"/>')
         .addClass(RH_REVIEWER_LIST_CLASS)
         .append($reviewerListJQuery);
     var $rhApprovalDiv = $('<div/>')
@@ -49,23 +49,47 @@ function createPRApprovalStatus(reviewers, approvers) {
     $(GH_BRANCH_ACTION_DIV).append($rhApprovalDiv);
 }
 
-function getReviewers() {
-    return [];
+function getApproverList() {
+    var lis = "";
+    for (var i = 0; i < reviewers.length; i++) {
+        var checked = reviewers[i].approved ? "checked" : "unchecked";
+        lis += "<li><input type='checkbox' disabled " + checked + "> " +
+                reviewers[i].userId + "</li>";
+    }
+    return lis;
 }
 
-function updateApprovers() {
-    //console.log($(GH_COMMENT_CLASS));
-    $(GH_COMMENT_CLASS).each(function() {
+function updateReviewers() {
+    var $comments = $(GH_COMMENT_CLASS);
+    $comments.each(function() {
+        var $comment = $(this).find('.comment-body.js-comment-body');
+        var $reviewer = $comment.find('.user-mention');//.attr('innerText').substr(1);
+        if ($reviewer.length > 0) {
+            var userName = $reviewer.text().substr(1);
+            if ($comment.text().indexOf(userName + '%') >= 0) {
+                var newReviewer = true;
+                for (var i = 0; i < reviewers.length; i++) {
+                    if (reviewer[i].userId == userName) {
+                        newReviewer = false;
+                    }
+                }
+                if (newReviewer) {
+                    console.log("Adding new reviewer", userName);
+                    reviewers.push(new Reviewer(userName));
+                }
+            }
+        }
+    });
+    $comments.each(function() {
         var $comment = $(this).find('.comment-body.js-comment-body').html();
         var $user = $(this).find('a').attr('href').substr(1);
         //var $userId = $(this).find('a > img').attr('data-user');
 
-        for (i = 0; i < APPROVALS.length; i++) {
-            if ($comment.indexOf(APPROVALS[i] >= 0)) {
-                for (i = 0; i < reviewers.length; i++) {
-                    if (reviewers[i].userId == $user) {
-                        reviewers[i].approved == true;
-                        break;
+        for (var i = 0; i < APPROVALS.length; i++) {
+            if ($comment.indexOf(APPROVALS[i]) >= 0) {
+                for (var j = 0; j < reviewers.length; j++) {
+                    if (reviewers[j].userId == $user) {
+                        reviewers[j].approved = true;
                     }
                 }
                 console.log("Approved: ", $user);
@@ -76,8 +100,8 @@ function updateApprovers() {
 
 function isPRApproved() {
     var isApproved = true;
-    for (i = 0; i < reviewers.length; i++) {
-        if (reviewers[i].approved == false) {
+    for (var i = 0; i < reviewers.length; i++) {
+        if (reviewers[i].approved === false) {
             isApproved = false;
         }
     }
@@ -87,11 +111,10 @@ function isPRApproved() {
 var reviewers = [];
 
 $(document).ready(function() {
-    reviewers = getReviewers();
-    var approvers = updateApprovers();
-
-    createPRApprovalStatus(reviewers, approvers);
-    if (isPRApproved(reviewers, approvers)) {
+    console.log("Starting up.");
+    updateReviewers();
+    createPRApprovalStatus();
+    if (isPRApproved()) {
         enableMergeButton();
     } else {
         disableMergeButton();
