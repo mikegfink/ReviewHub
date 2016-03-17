@@ -27,11 +27,19 @@ const APPROVALS = [
     'approve'
 ];
 
+var globalReviewers = [];
+var globalFiles = [];
+
 var Reviewer = function(userId, kind) {
     this.userId = userId;
     this.kind = kind;
     this.approved = false;
     //console.log('Task instantiated with id: ' + id);
+};
+
+var PRFile = function(filename) {
+    this.filename = filename;
+    this.importance = 0;
 };
 
 function disableMergeButton() {
@@ -66,10 +74,10 @@ function createPRApprovalStatus() {
 
 function getApproverList() {
     var lis = "";
-    for (var i = 0; i < reviewers.length; i++) {
-        var checked = reviewers[i].approved ? "checked" : "unchecked";
+    for (var i = 0; i < globalReviewers.length; i++) {
+        var checked = globalReviewers[i].approved ? "checked" : "unchecked";
         lis += "<li><input type='checkbox' disabled " + checked + "> " +
-                reviewers[i].userId + "</li>";
+                globalReviewers[i].userId + "</li>";
     }
     return lis;
 }
@@ -79,7 +87,19 @@ function getFiles() {
     var repoName = $(GH_TITLE_DIV).find('a').attr('href').substr(1);
     var prNum = $(GH_PR_NUM).text().substr(1);
     var url = 'https://api.github.com/repos/' + repoName + '/pulls/' + prNum + '/files';
-    console.log('Url', url);
+    $.ajax ( {
+    type:       'GET',
+    url:        url,
+    dataType:   'JSON',
+    success:    function (files) {
+        files.forEach(function(file) {
+            globalFiles.push(new PRFile(file.filename));
+            //console.log(file);
+            });
+            commitText = $(GH_COMMENT_CLASS).first().find('.comment-body.js-comment-body').text();
+
+        }
+    });
 }
 
 function updateCommentReviewers($comments) {
@@ -94,24 +114,24 @@ function updateCommentReviewers($comments) {
             if ($comment.text().indexOf(userName + '%') >= 0) {
                 anyReviewers = true;
                 var newReviewer = true;
-                for (var i = 0; i < reviewers.length; i++) {
-                    if (reviewers[i].userId == userName) {
+                for (var i = 0; i < globalReviewers.length; i++) {
+                    if (globalReviewers[i].userId == userName) {
                         newReviewer = false;
                     }
                 }
                 if (newReviewer) {
                     //console.log("Adding new reviewer", userName);
-                    reviewers.push(new Reviewer(userName, 'comment'));
+                    globalReviewers.push(new Reviewer(userName, 'comment'));
                 }
             }
         }
     });
     if (!anyReviewers) {
         console.log('No reviewers');
-        var i = reviewers.length;
+        var i = globalReviewers.length;
         while (i--) {
-            if (reviewers[i].kind === 'comment') {
-                reviewers.splice(i, 1);
+            if (globalReviewers[i].kind === 'comment') {
+                globalReviewers.splice(i, 1);
             }
         }
     }
@@ -126,11 +146,11 @@ function updateApprovers($comments) {
             var user = $(this).find('a').attr('href').substr(1);
             for (var i = 0; i < APPROVALS.length; i++) {
                 if (comment.indexOf(APPROVALS[i]) >= 0) {
-                    for (var j = 0; j < reviewers.length; j++) {
-                        if (reviewers[j].userId === user && reviewers[j].approved === false) {
+                    for (var j = 0; j < globalReviewers.length; j++) {
+                        if (globalReviewers[j].userId === user && globalReviewers[j].approved === false) {
                             //console.log("Approved: ", user);
                             reviewerChange = true;
-                            reviewers[j].approved = true;
+                            globalReviewers[j].approved = true;
                         }
                     }
                 }
@@ -142,17 +162,17 @@ function updateApprovers($comments) {
 
 function updateReviewers() {
     var $comments = $(GH_COMMENT_CLASS);
-    var numReviewers = reviewers.length;
+    var numReviewers = globalReviewers.length;
     updateCommentReviewers($comments);
     var reviewerChange = updateApprovers($comments);
 
-    return reviewers.length !== numReviewers || reviewerChange;
+    return globalReviewers.length !== numReviewers || reviewerChange;
 }
 
 function isPRApproved() {
     var isApproved = true;
-    for (var i = 0; i < reviewers.length; i++) {
-        if (reviewers[i].approved === false) {
+    for (var i = 0; i < globalReviewers.length; i++) {
+        if (globalReviewers[i].approved === false) {
             isApproved = false;
         }
     }
@@ -168,7 +188,7 @@ function isCommentDiv(mutation) {
 function runRHforPR() {
     var change = updateReviewers();
     var $rhApprovalDiv;
-    if (reviewers.length > 0) {
+    if (globalReviewers.length > 0) {
         $rhApprovalDiv = $('.' + RH_APPROVAL_STATUS_CLASS);
     } else {
         $rhApprovalDiv = null;
@@ -200,11 +220,11 @@ function reviewHub(discussionDiv) {
         mutations.forEach(function(mutation) {
             if (isCommentDiv(mutation)) {
                 $rhApprovalDiv = runRHforPR();
-                console.log('Approval div', $rhApprovalDiv, reviewers.length);
+                console.log('Approval div', $rhApprovalDiv, globalReviewers.length);
             }
             var $oldRHApprovalDiv = $('.' + RH_APPROVAL_STATUS_CLASS);
             //console.log($oldRHApprovalDiv);
-            if (reviewers.length === 0) {
+            if (globalReviewers.length === 0) {
                 console.log("Removing div");
                 $oldRHApprovalDiv.remove();
             } else if (mutation.target.className.indexOf('discussion-timeline-actions') >= 0) {
@@ -234,8 +254,6 @@ function reviewHub(discussionDiv) {
 
 }
 
-var reviewers = [];
-
 if (document.querySelector(GH_DISCUSSION_DIV) === null) {
     var mainDiv = document.querySelector(GH_MAIN_DIV);
     // create an observer instance
@@ -250,7 +268,7 @@ if (document.querySelector(GH_DISCUSSION_DIV) === null) {
             }
         } else {
             running = false;
-            reviewers = [];
+            globalReviewers = [];
         }
 
     });
