@@ -15,7 +15,7 @@ const GH_TITLE_DIV = '.entry-title strong';
 const GH_MAIN_DIV = '.main-content';
 const GH_PR_NUM = '.gh-header-number';
 const GH_MERGE_BUTTON = '.btn.btn-primary.js-merge-branch-action';
-const GH_DISCUSSION_DIV = '.js-discussion';
+const GH_DISCUSSION_DIV = '.discussion-timeline';
 const GH_BRANCH_ACTION_DIV = '.branch-action-item';
 const GH_COMMENT_CLASS = '.timeline-comment-wrapper:not(.timeline-new-comment)';
 const GH_LINE_COMMENT_DIV = '[id^=diff-for-comment]';
@@ -27,8 +27,9 @@ const APPROVALS = [
     'approve'
 ];
 
-var Reviewer = function(userId) {
+var Reviewer = function(userId, kind) {
     this.userId = userId;
+    this.kind = kind;
     this.approved = false;
     //console.log('Task instantiated with id: ' + id);
 };
@@ -82,12 +83,16 @@ function getFiles() {
 }
 
 function updateCommentReviewers($comments) {
+    //console.log($comments);
+    var anyReviewers = false;
     $comments.each(function() {
         var $comment = $(this).find('.comment-body.js-comment-body');
         var $reviewer = $comment.find('.user-mention');//.attr('innerText').substr(1);
+        console.log($reviewer);
         if ($reviewer.length > 0) {
             var userName = $reviewer.text().substr(1);
             if ($comment.text().indexOf(userName + '%') >= 0) {
+                anyReviewers = true;
                 var newReviewer = true;
                 for (var i = 0; i < reviewers.length; i++) {
                     if (reviewers[i].userId == userName) {
@@ -96,13 +101,20 @@ function updateCommentReviewers($comments) {
                 }
                 if (newReviewer) {
                     //console.log("Adding new reviewer", userName);
-                    reviewers.push(new Reviewer(userName));
+                    reviewers.push(new Reviewer(userName, 'comment'));
                 }
             }
-        } else {
-            reviewers = [];
         }
     });
+    if (!anyReviewers) {
+        console.log('No reviewers');
+        var i = reviewers.length;
+        while (i--) {
+            if (reviewers[i].kind === 'comment') {
+                reviewers.splice(i, 1);
+            }
+        }
+    }
 }
 
 function updateApprovers($comments) {
@@ -134,7 +146,7 @@ function updateReviewers() {
     updateCommentReviewers($comments);
     var reviewerChange = updateApprovers($comments);
 
-    return reviewers.length > numReviewers || reviewerChange;
+    return reviewers.length !== numReviewers || reviewerChange;
 }
 
 function isPRApproved() {
@@ -147,10 +159,21 @@ function isPRApproved() {
     return isApproved;
 }
 
+function isCommentDiv(mutation) {
+    var isDiscussion = mutation.target.className.indexOf('js-discussion') >= 0;
+    var isComment = mutation.target.className.indexOf('timeline-comment-wrapper') >= 0;
+    return isDiscussion || isComment;
+}
+
 function runRHforPR() {
     var change = updateReviewers();
-    var $rhApprovalDiv = null;
-    getFiles();
+    var $rhApprovalDiv;
+    if (reviewers.length > 0) {
+        $rhApprovalDiv = $('.' + RH_APPROVAL_STATUS_CLASS);
+    } else {
+        $rhApprovalDiv = null;
+    }
+
     if (change) {
         $rhApprovalDiv = createPRApprovalStatus();
         if (isPRApproved()) {
@@ -164,6 +187,7 @@ function runRHforPR() {
 
 function reviewHub(discussionDiv) {
     console.log("Starting up.");
+    getFiles();
     var $rhApprovalDiv = runRHforPR();
     var $ghActionDiv = $(GH_BRANCH_ACTION_DIV);
     if ($rhApprovalDiv !== null) {
@@ -173,27 +197,29 @@ function reviewHub(discussionDiv) {
     // create an observer instance
     var discObserver = new MutationObserver(function(mutations) {
         console.log('Saw a mutation.', mutations);
-
-        var $rhApprovalDiv = runRHforPR();
-        console.log('Approval div', $rhApprovalDiv);
-        var $oldRHApprovalDiv = $('.' + RH_APPROVAL_STATUS_CLASS);
-        if (reviewers.length > 0) {
-            if ($oldRHApprovalDiv.length > 0) {
-                console.log('Old rh approval there.', $oldRHApprovalDiv);
-                if ($rhApprovalDiv !== null) {
-                    $oldRHApprovalDiv.replaceWith($rhApprovalDiv);
-                }
-            } else {
-                if ($rhApprovalDiv !== null) {
-                    //$(GH_BRANCH_ACTION_DIV).append($rhApprovalDiv);
-                }
-                $(GH_BRANCH_ACTION_DIV).append($rhApprovalDiv);
-                console.log('Couldnt find an approval div', $(GH_BRANCH_ACTION_DIV));
-
+        mutations.forEach(function(mutation) {
+            if (isCommentDiv(mutation)) {
+                $rhApprovalDiv = runRHforPR();
+                console.log('Approval div', $rhApprovalDiv, reviewers.length);
             }
-        } else {
-            $oldRHApprovalDiv.remove();
-        }
+            var $oldRHApprovalDiv = $('.' + RH_APPROVAL_STATUS_CLASS);
+            //console.log($oldRHApprovalDiv);
+            if (reviewers.length === 0) {
+                console.log("Removing div");
+                $oldRHApprovalDiv.remove();
+            } else if (mutation.target.className.indexOf('discussion-timeline-actions') >= 0) {
+                if ($oldRHApprovalDiv.length > 0) {
+                    if ($rhApprovalDiv !== null) {
+                        $oldRHApprovalDiv.replaceWith($rhApprovalDiv);
+                    }
+                } else {
+                    if ($rhApprovalDiv !== null) {
+                        $(GH_BRANCH_ACTION_DIV).append($rhApprovalDiv);
+                    }
+                }
+            }
+        });
+
     });
 
     // configuration of the observer:
@@ -240,6 +266,7 @@ if (document.querySelector(GH_DISCUSSION_DIV) === null) {
 } else {
     $(document).ready(function() {
         var discussionDiv = document.querySelector(GH_DISCUSSION_DIV);
+        console.log(discussionDiv);
         reviewHub(discussionDiv);
     });
 }
