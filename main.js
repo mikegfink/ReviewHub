@@ -39,9 +39,8 @@ var Reviewers = function() {
 };
 var globalReviewers = new Reviewers();
 
-var Reviewer = function(userId, kind) {
+var Reviewer = function(userId) {
     this.userId = userId;
-    this.kind = kind;
     this.approved = false;
     //console.log('Task instantiated with id: ' + id);
 };
@@ -86,21 +85,81 @@ function createPRApprovalStatus() {
 function getApproverList() {
     var lis = "";
     console.log(globalReviewers.fromComment);
+    var reviewers = [];
     globalReviewers.fromIssue.forEach(function(reviewer) {
-        var checked = reviewer.approved ? "checked" : "unchecked";
-        lis += "<li><input type='checkbox' disabled " + checked + "> " +
-                reviewer.userId + "</li>";
+        reviewers.push(reviewer);
     });
     globalReviewers.fromComment.forEach(function(reviewer) {
+        if (!containsObject(reviewer, reviewers)) {
+            //console.log('Not in reviewers:', reviewer);
+            reviewers.push(reviewer);
+        }
+    });
+    reviewers.forEach(function(reviewer) {
         var checked = reviewer.approved ? "checked" : "unchecked";
         lis += "<li><input type='checkbox' disabled " + checked + "> " +
                 reviewer.userId + "</li>";
     });
+
     return lis;
 }
 
+function containsObject(obj, list) {
+    var i;
+    for (i = 0; i < list.length; i++) {
+        if (list[i].userId === obj.userId) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function processIssue(issueBody) {
+    var issueReviewers = [];
+    var $reviewer = $(issueBody).find('.user-mention');
+    if ($reviewer.length > 0) {
+        var userName = $reviewer.text().substr(1);
+        if ($(issueBody).text().indexOf(userName + '%') >= 0) {
+            var newReviewer = true;
+            for (var i = 0; i < globalReviewers.fromIssue.length; i++) {
+                if (globalReviewers.fromIssue[i].userId == userName) {
+                    newReviewer = false;
+                }
+            }
+            if (newReviewer) {
+                console.log("Adding issue reviewer", userName);
+                issueReviewers.push(new Reviewer(userName));
+            }
+        }
+    }
+    globalReviewers.fromIssue = issueReviewers;
+}
+
+function getIssues(callback, $oldRHApprovalDiv) {
+    var repoName = $(GH_TITLE_DIV).find('a').attr('href').substr(1);
+    var url = GH_REPO_API_URL + repoName + '/issues';
+    console.log('Calling GitHub Issues API.');
+    $.ajax ( {
+    type:       'GET',
+    url:        url,
+    headers: {
+        'Accept':'application/vnd.github.v3.html+json'
+    },
+    dataType:   'JSON',
+    success:    function (issues) {
+        issues.forEach(function(issue) {
+            //console.log(issue);
+            if (issue.title.indexOf('ReviewHub Reviewers') >= 0) {
+                processIssue(issue.body_html);
+            }
+            });
+            callback($oldRHApprovalDiv);
+        }
+    });
+}
+
 function getFiles() {
-    var commitText = $(GH_COMMENT_CLASS).first().find(GH_COMMENT_BODY).text();
     var repoName = $(GH_TITLE_DIV).find('a').attr('href').substr(1);
     var prNum = $(GH_PR_NUM).text().substr(1);
     var url = GH_REPO_API_URL + repoName + '/pulls/' + prNum + '/files';
@@ -114,12 +173,13 @@ function getFiles() {
             globalFiles.push(new PRFile(file.filename));
             //console.log(file);
             });
-            getFileOrder(commitText);
+            getFileOrder();
         }
     });
 }
 
-function getFileOrder(commitText) {
+function getFileOrder() {
+    var commitText = $(GH_COMMENT_CLASS).first().find(GH_COMMENT_BODY).text();
     var plus = '';
     for (var i = 1; i <= 5; i++) {
         plus += '+';
@@ -132,6 +192,7 @@ function updateFileImportance(commitText, plus) {
     for (var i = 0, len = globalFiles.length; i < len; i++) {
         if (commitText.indexOf(plus + globalFiles[i].filename) >= 0) {
             globalFiles[i].importance = plus.length;
+            //console.log(globalFiles[i]);
         }
     }
 }
@@ -149,24 +210,25 @@ function compareFiles(a, b) {
 
 function reorderFiles() {
     var $files = $('.file');
-    console.log($files);
+    //console.log(globalFiles);
     globalFiles = globalFiles.sort(compareFiles);
 
     var $orderedFiles = [];
     for (var i = 0, len = globalFiles.length; i < len; i++) {
         $files.each(function(j) {
             //console.log($(this).find('div[data-path="' + globalFiles[i].filename + '"]'));
+            //console.log(globalFiles[i].filename);
             if ($(this).find('div[data-path="' + globalFiles[i].filename + '"]').length != 0) {
-                var $element = $(this).clone().addClass(RH_CLASS).attr('id','rh-' + 'i');
+                var $element = $(this).clone().addClass(RH_CLASS).attr('id','rh-' + i);
                 $orderedFiles.push($element);
             }
         });
     }
-    console.log($orderedFiles);
+    //console.log($orderedFiles);
     for (var k = 0, olen = $orderedFiles.length; k < olen; k++) {
         $('#diff-' + k).replaceWith($orderedFiles[k][0]);
         //$('#diff-' + k).remove();
-        console.log($orderedFiles[k][0]);
+        //console.log($orderedFiles[k][0]);
     }
 
 }
@@ -183,14 +245,14 @@ function updateCommentReviewers($comments) {
             if ($comment.text().indexOf(userName + '%') >= 0) {
                 anyReviewers = true;
                 var newReviewer = true;
-                for (var i = 0; i < globalReviewers.length; i++) {
-                    if (globalReviewers[i].userId == userName) {
+                for (var i = 0; i < globalReviewers.fromComment.length; i++) {
+                    if (globalReviewers.fromComment[i].userId == userName) {
                         newReviewer = false;
                     }
                 }
                 if (newReviewer) {
                     console.log("Adding new reviewer", userName);
-                    commentReviewers.push(new Reviewer(userName, 'comment'));
+                    commentReviewers.push(new Reviewer(userName));
                 }
             }
         }
@@ -259,17 +321,13 @@ function isPRApproved() {
 }
 
 function isCommentDiv(mutation) {
-    //var isDiscussion = mutation.target.className.indexOf('js-discussion') >= 0;
-    //var isComment = mutation.target.className.indexOf('timeline-comment-wrapper') >= 0;
     var isDiscussion = mutation.target.className.indexOf('pull-request-tab-content') >= 0;
     var isComment = mutation.target.className.indexOf('js-discussion') >= 0;
     var isActionChange = mutation.target.className.indexOf('discussion-timeline-actions') >= 0;
-    //console.log('PRTabC', isDiscussion, 'JS-disc', isComment, 'disc-tim-act', isActionChange);
     return isDiscussion || isComment || isActionChange;
 }
 
 function isFileDiv(mutation) {
-    //console.log(mutation.target.className);
     var isDiscussion = mutation.target.className.indexOf('diff-view-commentable') >= 0;
     var isComment = mutation.target.className.indexOf('comment') >= 0;
     return isDiscussion || isComment;
@@ -279,7 +337,7 @@ function getNumReviewers() {
     return globalReviewers.fromComment.length + globalReviewers.fromIssue.length;
 }
 
-function preparePR() {
+function preparePR($oldRHApprovalDiv) {
     updateReviewers();
     var $rhApprovalDiv = null;
     if (getNumReviewers() > 0) {
@@ -287,7 +345,7 @@ function preparePR() {
     } else {
         $rhApprovalDiv = null;
     }
-
+    console.log('Reviewers:', getNumReviewers());
     $rhApprovalDiv = createPRApprovalStatus();
     if (isPRApproved()) {
         enableMergeButton();
@@ -295,7 +353,13 @@ function preparePR() {
         disableMergeButton();
     }
 
-    return $rhApprovalDiv;
+    if ($oldRHApprovalDiv.length > 0 && $rhApprovalDiv !== null) {
+        //console.log('Replacing RH Action');
+        $oldRHApprovalDiv.replaceWith($rhApprovalDiv);
+    } else if ($rhApprovalDiv !== null) {
+        //console.log('Adding new RH Action');
+        $(GH_BRANCH_ACTION_DIV).append($rhApprovalDiv);
+    }
 }
 
 function isReviewHubMutation(mutations) {
@@ -314,27 +378,39 @@ function isRHMutation(mutations) {
     var isRHMutation = false;
     mutations.forEach(function(mutation) {
         //console.log(mutation.target.className, mutation.type);
-        if (mutation.target.className !== null) {
+        if (mutation.target.className !== "") {
             var className = mutation.target.className;
             if (className.indexOf('js-discussion') >= 0) {
                 isRHMutation = true;
             } else if (className.indexOf('pull-merging') >= 0) {
                 isRHMutation = true;
-
             } else if (className.indexOf('timeline-comment-wrapper') >= 0) {
                 isRHMutation = true;
-
             } else if (className.indexOf('discussion-timeline-actions') >= 0) {
                 isRHMutation = true;
-
             } else if (className.indexOf('context-loader-container') >= 0) {
                 if (mutation.addedNodes.length > 0) {
                     isRHMutation = true;
                 }
             }
+        } else if (mutation.addedNodes.length > 0) {
+            var discTime = mutation.addedNodes;
+            for (var key in discTime) {
+                if (discTime.hasOwnProperty(key)) {
+                    var obj = discTime[key];
+                    if (obj.className !== undefined && obj.className.indexOf('new-discussion-timeline') >= 0) {
+                        //console.log(obj.getElementsByClassName('files-bucket'));
+                        if (obj.getElementsByClassName('js-discussion').length > 0) {
+                             isRHMutation = true;
+                        } else if (obj.getElementsByClassName('files-bucket').length > 0) {
+                            isRHMutation = true;
+                        }
+                    }
+                }
+            }
         }
     });
-    //console.log(isRHMutation);
+    console.log('RHMutation', isRHMutation);
     return isRHMutation;
 }
 
@@ -346,17 +422,13 @@ function start() {
     var mainObserver = new MutationObserver(function(mutations) {
         console.log('Main observer:', mutations);
         var discussionDiv = $(GH_DISCUSSION_DIV);
-        var filesDiv =$(GH_FILES_DIV);
+        var filesDiv = $(GH_FILES_DIV);
         //console.log('Discussion div', discussionDiv, 'Files div', filesDiv);
+
         if (isRHMutation(mutations)) {
             if (discussionDiv.length > 0) { //&& isReviewHubMutation(mutations))
-
-                $rhApprovalDiv = preparePR();
-                if (getNumReviewers() > 0) {
-                    getFiles();
-                }
-                //console.log('Approval div', $rhApprovalDiv, getNumReviewers());
-
+                console.log('Comment mutation.');
+                getFiles();
                 mutations.forEach(function(mutation) {
                     var $oldRHApprovalDiv = $('.' + RH_APPROVAL_STATUS_CLASS);
                     //var discussionChanged = false;
@@ -365,34 +437,21 @@ function start() {
                             console.log("Removing div");
                             $oldRHApprovalDiv.remove();
                         } else {
-                            if ($oldRHApprovalDiv.length > 0 && $rhApprovalDiv !== null) {
-                                //console.log('Replacing RH Action');
-                                $oldRHApprovalDiv.replaceWith($rhApprovalDiv);
-                            } else if ($rhApprovalDiv !== null) {
-                                //console.log('Adding new RH Action');
-                                $(GH_BRANCH_ACTION_DIV).append($rhApprovalDiv);
-                            }
+                            getIssues(preparePR, $oldRHApprovalDiv);
                         }
                     }
                 });
             } else if (filesDiv.length > 0) {// && !isReviewHubMutation(mutations))
                 console.log('File mutation.');
                 reorderFiles();
-                // mutations.forEach(function(mutation) {
-                //     if (isFileDiv(mutation)) {
-                //
-                //     }
-                // });
             }
 
         } else if ($(GH_PR_DIV).length == 0) {
             console.log('Clearing globals.', $(GH_PR_DIV));
-            globalReviewers = null;
-            globalFiles = {};
+            globalReviewers.fromComment = [];
+            globalFiles = [];
         }
     });
-
-
 
     // configuration of the observer:
     var config = {
@@ -401,109 +460,15 @@ function start() {
         subtree: true
     };
 
-    // pass in the target node, as well as the observer options
-    mainObserver.observe(mainDiv, config);
-
     if (document.querySelector(GH_DISCUSSION_DIV) !== null) {
         getFiles();
-        $rhApprovalDiv = preparePR();
-        $(GH_BRANCH_ACTION_DIV).append($rhApprovalDiv);
+        var $oldRHApprovalDiv = $('.' + RH_APPROVAL_STATUS_CLASS);
+        getIssues(preparePR, $oldRHApprovalDiv);
     }
+    // pass in the target node, as well as the observer options
+    mainObserver.observe(mainDiv, config);
 }
-// } else {
-//     $(document).ready(function() {
-//         var discussionDiv = document.querySelector(GH_DISCUSSION_DIV);
-//         //console.log(discussionDiv);
-//         reviewHub(discussionDiv);
-//     });
-// }
 
 $(document).ready(function() {
     start();
 });
-
-// function reviewHub(discussionDiv) {
-//     console.log("Starting up.");
-//
-//     getFiles();
-//     var $rhApprovalDiv = preparePR();
-//     var $ghActionDiv = $(GH_BRANCH_ACTION_DIV);
-//     if ($rhApprovalDiv !== null) {
-//         $ghActionDiv.append($rhApprovalDiv);
-//     }
-//
-//     // create an observer instance
-//     var discObserver = new MutationObserver(function(mutations) {
-//         console.log('Saw a disc mutation.', mutations);
-//         mutations.forEach(function(mutation) {
-//             if (isCommentDiv(mutation)) {
-//                 getFiles();
-//                 $rhApprovalDiv = preparePR();
-//                 console.log('Approval div', $rhApprovalDiv, globalReviewers.length);
-//             }
-//
-//             var $oldRHApprovalDiv = $('.' + RH_APPROVAL_STATUS_CLASS);
-//             if (globalReviewers.length === 0) {
-//                 console.log("Removing div");
-//                 $oldRHApprovalDiv.remove();
-//             } else if (mutation.target.className.indexOf('discussion-timeline-actions') >= 0) {
-//                 if ($oldRHApprovalDiv.length > 0) {
-//                     if ($rhApprovalDiv !== null) {
-//                         $oldRHApprovalDiv.replaceWith($rhApprovalDiv);
-//                     }
-//                 } else {
-//                     if ($rhApprovalDiv !== null) {
-//                         $(GH_BRANCH_ACTION_DIV).append($rhApprovalDiv);
-//                     }
-//                 }
-//             }
-//         });
-//
-//     });
-//
-//     // configuration of the observer:
-//     var config = {
-//         childList: true,
-//         subtree: true,
-//         characterData: true
-//     };
-//
-//     // pass in the target node, as well as the observer options
-//     discObserver.observe(discussionDiv, config);
-//
-//     // create an observer instance
-//     var navObserver = new MutationObserver(function(mutations) {
-//         console.log('Saw a files mutation.', mutations);
-//         mutations.forEach(function(mutation) {
-//             if ($(GH_DISCUSSION_DIV).length > 0) {
-//                 getFiles();
-//                 $rhApprovalDiv = preparePR();
-//                 console.log('Approval div', $rhApprovalDiv, globalReviewers.length);
-//                 var $oldRHApprovalDiv = $('.' + RH_APPROVAL_STATUS_CLASS);
-//                 //console.log($oldRHApprovalDiv);
-//                 if (globalReviewers.length === 0) {
-//                     console.log("Removing div");
-//                     $oldRHApprovalDiv.remove();
-//                 } else if (mutation.target.className.indexOf('discussion-timeline-actions') >= 0) {
-//                     if ($oldRHApprovalDiv.length > 0) {
-//                         if ($rhApprovalDiv !== null) {
-//                             $oldRHApprovalDiv.replaceWith($rhApprovalDiv);
-//                         }
-//                     } else {
-//                         if ($rhApprovalDiv !== null) {
-//                             $(GH_BRANCH_ACTION_DIV).append($rhApprovalDiv);
-//                         }
-//                     }
-//                 }
-//             } else if ($(GH_FILES_DIV).length > 0) {
-//                 reorderFiles();
-//             }
-//
-//         });
-//
-//     });
-//     // pass in the target node, as well as the observer options
-//     var navDiv = document.querySelector('.repository-content');
-//     console.log(navDiv);
-//     navObserver.observe(navDiv, config);
-// }
