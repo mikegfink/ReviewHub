@@ -28,7 +28,8 @@ const RH_CLASS = 'reviewhub';
 const APPROVALS = [
     ':+1:',
     ':shipit:',
-    'approve'
+    'approve',
+    'LGTM'
 ];
 var globalFiles = [];
 
@@ -84,7 +85,7 @@ function createPRApprovalStatus() {
 
 function getApproverList() {
     var lis = "";
-    console.log(globalReviewers.fromComment);
+    //console.log(globalReviewers.fromComment);
     var reviewers = [];
     globalReviewers.fromIssue.forEach(function(reviewer) {
         reviewers.push(reviewer);
@@ -121,16 +122,18 @@ function processIssue(issueBody) {
     if ($reviewer.length > 0) {
         var userName = $reviewer.text().substr(1);
         if ($(issueBody).text().indexOf(userName + '%') >= 0) {
-            var newReviewer = true;
-            for (var i = 0; i < globalReviewers.fromIssue.length; i++) {
-                if (globalReviewers.fromIssue[i].userId == userName) {
-                    newReviewer = false;
-                }
-            }
-            if (newReviewer) {
-                console.log("Adding issue reviewer", userName);
-                issueReviewers.push(new Reviewer(userName));
-            }
+            // var newReviewer = true;
+            // for (var i = 0; i < globalReviewers.fromIssue.length; i++) {
+            //     if (globalReviewers.fromIssue[i].userId == userName) {
+            //         newReviewer = false;
+            //     }
+            // }
+            // if (newReviewer) {
+            //     console.log("Adding issue reviewer", userName);
+            //     issueReviewers.push(new Reviewer(userName));
+            // }
+            console.log("Adding issue reviewer", userName);
+            issueReviewers.push(new Reviewer(userName));
         }
     }
     globalReviewers.fromIssue = issueReviewers;
@@ -180,7 +183,6 @@ function getFiles() {
 
 function getFileOrder() {
     var commitText = $(GH_COMMENT_CLASS).first().find(GH_COMMENT_BODY).text();
-
     var plus = '';
     for (var i = 1; i <= 5; i++) {
         plus += '+';
@@ -246,20 +248,22 @@ function updateCommentReviewers($comments) {
         if ($reviewer.length > 0) {
             var userName = $reviewer.text().substr(1);
             if ($comment.text().indexOf(userName + '%') >= 0) {
-                anyReviewers = true;
-                var newReviewer = true;
-                for (var i = 0; i < globalReviewers.fromComment.length; i++) {
-                    if (globalReviewers.fromComment[i].userId == userName) {
-                        newReviewer = false;
-                    }
-                }
-                if (newReviewer) {
-                    console.log("Adding new reviewer", userName);
-                    commentReviewers.push(new Reviewer(userName));
-                }
+                commentReviewers.push(new Reviewer(userName));
+                // anyReviewers = true;
+                // var newReviewer = true;
+                // for (var i = 0; i < globalReviewers.fromComment.length; i++) {
+                //     if (globalReviewers.fromComment[i].userId == userName) {
+                //         newReviewer = false;
+                //     }
+                // }
+                // if (newReviewer) {
+                //     console.log("Adding new reviewer", userName);
+                //     commentReviewers.push(new Reviewer(userName));
+                // }
             }
         }
     });
+    //console.log('Comment reviewers', commentReviewers);
     globalReviewers.fromComment = commentReviewers;
 }
 
@@ -267,14 +271,14 @@ function checkApproved(user) {
     reviewerChange = false;
     globalReviewers.fromComment.forEach(function(reviewer) {
         if (reviewer.userId === user && reviewer.approved === false) {
-            console.log("Approved: ", user);
+            console.log("Comment Approved: ", user);
             reviewerChange = true;
             reviewer.approved = true;
         }
     });
     globalReviewers.fromIssue.forEach(function(reviewer) {
         if (reviewer.userId === user && reviewer.approved === false) {
-            console.log("Approved: ", user);
+            console.log("Issue Approved: ", user);
             reviewerChange = true;
             reviewer.approved = true;
         }
@@ -435,14 +439,13 @@ function start() {
                 mutations.forEach(function(mutation) {
                     var $oldRHApprovalDiv = $('.' + RH_APPROVAL_STATUS_CLASS);
                     //var discussionChanged = false;
-                    if (isCommentDiv(mutation)) {
-                        if (getNumReviewers() === 0) {
-                            console.log("Removing div");
-                            $oldRHApprovalDiv.remove();
-                        } else {
-                            getIssues(preparePR, $oldRHApprovalDiv);
-                        }
+                    //if (isCommentDiv(mutation)) {
+                    getIssues(preparePR, $oldRHApprovalDiv);
+                    if (getNumReviewers() === 0) {
+                        console.log("Removing div");
+                        $oldRHApprovalDiv.remove();
                     }
+                    //}
                 });
             } else if (filesDiv.length > 0) {// && !isReviewHubMutation(mutations))
                 console.log('File mutation.');
