@@ -8,7 +8,9 @@ GitHub Pull Request Review Modification
 
 ## Usage
 ### Add Reviewers for a Repository:
-  Create an issue called: ReviewHub Reviewers. For each reviewer you'd like to have to review all merges for the repository, add a user mention (@username) followed by the '%' character to the issue text.
+  Create an issue called: ReviewHub Reviewers. 
+  
+  For each reviewer you'd like to have to review all merges for the repository, add a user mention (@username) followed by the '%' character to the issue text.
   
   e.g. To add two reviewers, type:
     @mikegfink%, @nicviclee%
