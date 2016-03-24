@@ -24,10 +24,10 @@ GitHub Pull Request Review Modification
 ### Approve a Pull Request:
   To approve a Pull Request you are a reviewer for, add a comment with one of the following phrases:
   
-    + ':+1:',
-    + ':shipit:',
-    + 'approve',
-    + 'LGTM'
+    ':+1:',
+    ':shipit:',
+    'approve',
+    'LGTM'
     
 ### Reorder files in a Pull Request
   To reorder files in a Pull Request you must be able to edit the Pull Request commit message.
@@ -36,6 +36,6 @@ GitHub Pull Request Review Modification
   Files are reordered by typing the full file name prefixed with a '+' to indicate the level of importance. Files can be prefixed with up to 5 '+'s. Files prefixed with more '+'s are ordered before files with less '+'s in the Pull Request Diff view. Unmentioned files are treated as having 0 '+'s.
   
   e.g. 
-  ++README.md
-  +MyFile.java
-  +++++YourFile.go
+  * ++README.md
+  * +MyFile.java
+  * +++++YourFile.go
