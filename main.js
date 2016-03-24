@@ -180,6 +180,7 @@ function getFiles() {
 
 function getFileOrder() {
     var commitText = $(GH_COMMENT_CLASS).first().find(GH_COMMENT_BODY).text();
+
     var plus = '';
     for (var i = 1; i <= 5; i++) {
         plus += '+';
@@ -192,7 +193,7 @@ function updateFileImportance(commitText, plus) {
     for (var i = 0, len = globalFiles.length; i < len; i++) {
         if (commitText.indexOf(plus + globalFiles[i].filename) >= 0) {
             globalFiles[i].importance = plus.length;
-            //console.log(globalFiles[i]);
+            //console.log(globalFiles[i].filename, globalFiles[i].importance);
         }
     }
 }
@@ -219,14 +220,16 @@ function reorderFiles() {
             //console.log($(this).find('div[data-path="' + globalFiles[i].filename + '"]'));
             //console.log(globalFiles[i].filename);
             if ($(this).find('div[data-path="' + globalFiles[i].filename + '"]').length != 0) {
-                var $element = $(this).clone().addClass(RH_CLASS).attr('id','rh-' + i);
-                $orderedFiles.push($element);
+                $orderedFiles.push($(this).clone());
             }
         });
     }
     //console.log($orderedFiles);
     for (var k = 0, olen = $orderedFiles.length; k < olen; k++) {
-        $('#diff-' + k).replaceWith($orderedFiles[k][0]);
+        var $element = $orderedFiles[k].clone().addClass(RH_CLASS).attr('id','rh-' + i);
+        var $oldDiv = $('#diff-' + k).clone();
+        $orderedFiles[k][0].replaceWith($oldDiv);
+        $('#diff-' + k).replaceWith($element[0]);
         //$('#diff-' + k).remove();
         //console.log($orderedFiles[k][0]);
     }
